@@ -9,5 +9,6 @@ backend/db.sqlite3
 .venv/
 venv/
 mobile/.dart_tool/
+mobile/.git/
 mobile/build/
 *.log
