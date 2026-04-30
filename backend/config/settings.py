@@ -171,12 +171,12 @@ REST_FRAMEWORK = {
 # FTS: exige PostgreSQL. Sem DB_NAME, import/search usam fallback icontains apenas.
 USE_POSTGRES_SEARCH = bool(_db_name)
 
-# RAG / embeddings (sentence-transformers all-MiniLM-L6-v2 → 384 dim)
-EMBEDDING_MODEL_NAME = os.environ.get(
-    "EMBEDDING_MODEL_NAME",
-    "sentence-transformers/all-MiniLM-L6-v2",
-)
-EMBEDDING_DIMENSION = 384
+# RAG / embeddings — OpenAI `text-embedding-3-small` com `dimensions` (ex.: 384)
+OPENAI_EMBEDDING_MODEL = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+try:
+    EMBEDDING_DIMENSION = max(1, min(int(os.environ.get("EMBEDDING_DIMENSION", "384")), 1536))
+except ValueError:
+    EMBEDDING_DIMENSION = 384
 RAG_TOP_K_SEMANTIC = min(int(os.environ.get("RAG_TOP_K_SEMANTIC", "24")), 64)
 RAG_TOP_K_TEXT = min(int(os.environ.get("RAG_TOP_K_TEXT", "16")), 40)
 RAG_TOP_K_FINAL = min(int(os.environ.get("RAG_TOP_K_FINAL", "12")), 24)

@@ -8,14 +8,14 @@ from embeddings.services import batch_generate_embeddings
 
 
 class Command(BaseCommand):
-    help = "Gera embeddings para todos os versículos (sentence-transformers). Pula os que já têm embedding."
+    help = "Gera embeddings via API OpenAI (text-embedding-3-small). Requer OPENAI_API_KEY. Use --force para recalcular tudo após mudar de modelo."
 
     def add_arguments(self, parser):
         parser.add_argument(
             "--batch-size",
             type=int,
-            default=64,
-            help="Tamanho do batch para encoding e bulk_update",
+            default=100,
+            help="Máx. de textos por pedido à API (≤2048; predefinido 100 para quotas/rate limit).",
         )
         parser.add_argument(
             "--force",
@@ -33,6 +33,14 @@ class Command(BaseCommand):
         batch_size = options["batch_size"]
         force = options["force"]
         limit = options["limit"]
+
+        if not (getattr(settings, "OPENAI_API_KEY", "") or "").strip():
+            self.stdout.write(
+                self.style.ERROR(
+                    "OPENAI_API_KEY não definida. Configure no PythonAnywhere (Web → Environment) ou no .env na raiz do projeto."
+                )
+            )
+            return
 
         if force:
             qs = Verse.objects.all().order_by("id")

@@ -1,11 +1,13 @@
 """
 Busca semântica (cosine) + híbrido com busca textual (fallback / ranking).
+Similaridade calculada só com `math` (sem numpy).
 """
 from __future__ import annotations
 
 import logging
+import math
+from typing import Sequence
 
-import numpy as np
 from django.conf import settings
 from django.db.models import Q, QuerySet
 
@@ -16,17 +18,20 @@ from services.search import search_verses_icontains, search_verses_fts
 logger = logging.getLogger(__name__)
 
 
-def _norm_rows(matrix: np.ndarray) -> np.ndarray:
-    norms = np.linalg.norm(matrix, axis=1, keepdims=True)
-    norms = np.clip(norms, 1e-12, None)
-    return matrix / norms
+def _l2_norm(vec: Sequence[float]) -> float:
+    return math.sqrt(sum(x * x for x in vec))
 
 
-def _cosine_scores(query_vec: np.ndarray, matrix: np.ndarray) -> np.ndarray:
-    """matrix: (n, dim), query_vec: (dim,) — ambos L2-normalizados."""
-    q = query_vec / max(np.linalg.norm(query_vec), 1e-12)
-    m = _norm_rows(matrix)
-    return m @ q
+def _cosine_similarity(q: list[float], v: list[float]) -> float:
+    """Cosseno entre dois vetores (não exige normalização prévia)."""
+    if len(q) != len(v) or not q:
+        return 0.0
+    dot = sum(q[i] * v[i] for i in range(len(q)))
+    nq = _l2_norm(q)
+    nv = _l2_norm(v)
+    if nq < 1e-12 or nv < 1e-12:
+        return 0.0
+    return dot / (nq * nv)
 
 
 def search_similar_verses(
@@ -55,8 +60,9 @@ def search_similar_verses(
         logger.warning("Nenhum versículo com embedding. Rode: python manage.py generate_embeddings")
         return []
 
-    qvec = np.array(generate_embedding(query), dtype=np.float32)
-    if qvec.shape[0] != settings.EMBEDDING_DIMENSION:
+    qvec = generate_embedding(query)
+    dim = settings.EMBEDDING_DIMENSION
+    if len(qvec) != dim:
         return []
 
     chunk = 4000
@@ -64,20 +70,13 @@ def search_similar_verses(
     for i in range(0, len(ids), chunk):
         part_ids = ids[i : i + chunk]
         rows = Verse.objects.filter(id__in=part_ids).only("id", "embedding")
-        mat_list = []
-        id_order = []
         for v in rows:
             emb = v.embedding
-            if not emb or len(emb) != settings.EMBEDDING_DIMENSION:
+            if not emb or len(emb) != dim:
                 continue
-            mat_list.append(emb)
-            id_order.append(v.id)
-        if not mat_list:
-            continue
-        mat = np.array(mat_list, dtype=np.float32)
-        scores = _cosine_scores(qvec, mat)
-        for vid, sc in zip(id_order, scores.tolist(), strict=True):
-            best.append((vid, float(sc)))
+            vec = [float(x) for x in emb]
+            sc = _cosine_similarity(qvec, vec)
+            best.append((v.id, sc))
 
     best.sort(key=lambda x: x[1], reverse=True)
     best = best[:top_k]
@@ -114,8 +113,6 @@ def hybrid_search(
     sem = search_similar_verses(query, top_k=top_semantic, version_code=version_code)
     sem_map = {v.id: s for v, s in sem}
 
-    # `search_text_verses` já aplica o limite; materializar sem novo slice no QuerySet
-    # (evita combinações frágeis com QuerySet fatiado em versões do Django).
     text_qs = search_text_verses(query, top_text * 2, version_code)
     text_list = list(text_qs)
     text_map: dict[int, float] = {}

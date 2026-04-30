@@ -9,8 +9,7 @@ Deploy Django no PythonAnywhere (resumo)
    mkvirtualenv --python=/usr/bin/python3.11 bible-env   # ou versão disponível no PA
    pip install -r requirements.txt
 
-   Nota: torch/sentence-transformers são pesados; no plano gratuito pode falhar ou ficar lento.
-   Se precisar só da API sem embeddings locais, contacte para um requirements alternativo.
+   Nota: embeddings usam só httpx + API OpenAI (`text-embedding-3-small`); não há torch/sentence-transformers no servidor.
 
 3) Variáveis de ambiente (Web → Environment variables ou ficheiro .env na pasta pai do backend):
    DJANGO_SECRET_KEY=...

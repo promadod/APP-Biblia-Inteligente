@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import copy
 import logging
+import math
 import re
 from typing import Any
 
-import numpy as np
 from django.conf import settings
 
 from embeddings.services import generate_embedding
@@ -24,13 +24,12 @@ def normalize_question(text: str) -> str:
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
     if not a or not b or len(a) != len(b):
         return 0.0
-    va = np.asarray(a, dtype=np.float64)
-    vb = np.asarray(b, dtype=np.float64)
-    na = np.linalg.norm(va)
-    nb = np.linalg.norm(vb)
+    dot = sum(a[i] * b[i] for i in range(len(a)))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(x * x for x in b))
     if na < 1e-12 or nb < 1e-12:
         return 0.0
-    return float(np.dot(va, vb) / (na * nb))
+    return dot / (na * nb)
 
 
 def lookup_similar_response(
