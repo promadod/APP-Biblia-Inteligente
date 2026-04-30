@@ -1,0 +1,137 @@
+# Nomes de livros na ordem canônica (protestante 66) — BKJ português
+# Ordem importa para heurísticas; matching usa também lista por comprimento decrescente.
+version_code: BKJ_PT
+language: pt
+books:
+  - name: Gênesis
+    abbreviation: Gn
+  - name: Êxodo
+    abbreviation: Ex
+  - name: Levítico
+    abbreviation: Lv
+  - name: Números
+    abbreviation: Nm
+  - name: Deuteronômio
+    abbreviation: Dt
+  - name: Josué
+    abbreviation: Js
+  - name: Juízes
+    abbreviation: Jz
+  - name: Rute
+    abbreviation: Rt
+  - name: 1 Samuel
+    abbreviation: 1Sm
+  - name: 2 Samuel
+    abbreviation: 2Sm
+  - name: 1 Reis
+    abbreviation: 1Rs
+  - name: 2 Reis
+    abbreviation: 2Rs
+  - name: 1 Crônicas
+    abbreviation: 1Cr
+  - name: 2 Crônicas
+    abbreviation: 2Cr
+  - name: Esdras
+    abbreviation: Ed
+  - name: Neemias
+    abbreviation: Ne
+  - name: Ester
+    abbreviation: Et
+  - name: Jó
+    abbreviation: Jó
+  - name: Salmos
+    abbreviation: Sl
+  - name: Provérbios
+    abbreviation: Pv
+  - name: Eclesiastes
+    abbreviation: Ec
+  - name: Cantares
+    abbreviation: Ct
+  - name: Isaías
+    abbreviation: Is
+  - name: Jeremias
+    abbreviation: Jr
+  - name: Lamentações
+    abbreviation: Lm
+  - name: Ezequiel
+    abbreviation: Ez
+  - name: Daniel
+    abbreviation: Dn
+  - name: Oseias
+    abbreviation: Os
+  - name: Joel
+    abbreviation: Jl
+  - name: Amós
+    abbreviation: Am
+  - name: Obadias
+    abbreviation: Ob
+  - name: Jonas
+    abbreviation: Jn
+  - name: Miqueias
+    abbreviation: Mq
+  - name: Naum
+    abbreviation: Na
+  - name: Habacuque
+    abbreviation: Hc
+  - name: Sofonias
+    abbreviation: Sf
+  - name: Ageu
+    abbreviation: Ag
+  - name: Zacarias
+    abbreviation: Zc
+  - name: Malaquias
+    abbreviation: Ml
+  - name: Mateus
+    abbreviation: Mt
+  - name: Marcos
+    abbreviation: Mc
+  - name: Lucas
+    abbreviation: Lc
+  - name: João
+    abbreviation: Jo
+  - name: Atos
+    abbreviation: At
+  - name: Romanos
+    abbreviation: Rm
+  - name: 1 Coríntios
+    abbreviation: 1Co
+  - name: 2 Coríntios
+    abbreviation: 2Co
+  - name: Gálatas
+    abbreviation: Gl
+  - name: Efésios
+    abbreviation: Ef
+  - name: Filipenses
+    abbreviation: Fp
+  - name: Colossenses
+    abbreviation: Cl
+  - name: 1 Tessalonicenses
+    abbreviation: 1Ts
+  - name: 2 Tessalonicenses
+    abbreviation: 2Ts
+  - name: 1 Timóteo
+    abbreviation: 1Tm
+  - name: 2 Timóteo
+    abbreviation: 2Tm
+  - name: Tito
+    abbreviation: Tt
+  - name: Filemon
+    abbreviation: Fm
+  - name: Hebreus
+    abbreviation: Hb
+  - name: Tiago
+    abbreviation: Tg
+  - name: 1 Pedro
+    abbreviation: 1Pe
+  - name: 2 Pedro
+    abbreviation: 2Pe
+  - name: 1 João
+    abbreviation: 1Jo
+  - name: 2 João
+    abbreviation: 2Jo
+  - name: 3 João
+    abbreviation: 3Jo
+  - name: Judas
+    abbreviation: Jd
+  - name: Apocalipse
+    abbreviation: Ap

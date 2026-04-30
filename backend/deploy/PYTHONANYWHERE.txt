@@ -1,0 +1,38 @@
+Deploy Django no PythonAnywhere (resumo)
+=====================================
+
+1) Conta PythonAnywhere (Beginner permite HTTPS no seu subdomínio).
+
+2) Bash — clone e virtualenv:
+   git clone https://github.com/promadod/APP-Biblia-Inteligente.git
+   cd APP-Biblia-Inteligente/backend
+   mkvirtualenv --python=/usr/bin/python3.11 bible-env   # ou versão disponível no PA
+   pip install -r requirements.txt
+
+   Nota: torch/sentence-transformers são pesados; no plano gratuito pode falhar ou ficar lento.
+   Se precisar só da API sem embeddings locais, contacte para um requirements alternativo.
+
+3) Variáveis de ambiente (Web → Environment variables ou ficheiro .env na pasta pai do backend):
+   DJANGO_SECRET_KEY=...
+   DEBUG=0
+   ALLOWED_HOSTS=seudominio.pythonanywhere.com
+   CSRF_TRUSTED_ORIGINS=https://seudominio.pythonanywhere.com
+   CORS_ALLOWED_ORIGINS=https://seudominio.pythonanywhere.com
+   OPENAI_API_KEY=...   (se usar RAG/LLM)
+
+   Para SQLite (simples): não defina DB_NAME (o projeto usa sqlite em backend/db.sqlite3).
+
+4) Web → Static files:
+   URL: /static/
+   Directory: /home/SEU_USER/APP-Biblia-Inteligente/backend/staticfiles
+
+5) Consola na pasta backend:
+   python manage.py migrate
+   python manage.py collectstatic --noinput
+
+6) Web → WSGI: apontar para backend/pythonanywhere_wsgi.py (ver comentários no ficheiro).
+
+7) Reload da app Web.
+
+App Flutter: compile com --dart-define=API_BASE_URL=https://seudominio.pythonanywhere.com
+(opção: alterar resolveApiBaseUrl / baseUrl no cliente).

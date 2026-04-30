@@ -1,0 +1,40 @@
+name: bible_intelligent_app
+description: Bible Intelligent App — leitura, busca e estudos.
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  flutter_riverpod: ^2.6.1
+  http: ^1.2.2
+  google_fonts: ^6.2.1
+  flutter_markdown: ^0.7.7+1
+  shared_preferences: ^2.5.5
+  crypto: ^3.0.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/images/bibliainteligente.png
+  min_sdk_android: 21
+  # Ícone adaptativo: imagem a preencher o primeiro plano; fundo escuro alinhado ao tema
+  adaptive_icon_background: "#0A1628"
+  adaptive_icon_foreground: assets/images/bibliainteligente.png
+  remove_alpha_ios: true
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/

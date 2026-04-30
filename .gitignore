@@ -1,0 +1,13 @@
+.env
+**/.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+*.sqlite3
+backend/db.sqlite3
+.venv/
+venv/
+mobile/.dart_tool/
+mobile/build/
+*.log
