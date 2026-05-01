@@ -1,16 +1,26 @@
 import hashlib
 import logging
+import secrets
 
 from django.conf import settings
 from django.core.cache import cache
-from django.db.models import Max, Min
+from django.db.models import Max, Min, Q
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, throttle_classes
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.models import Book, Chapter, Study, Verse
+from core.models import (
+    AppUserAccount,
+    Book,
+    Chapter,
+    CollectiveStudy,
+    CollectiveStudyAccessRequest,
+    LearningGroup,
+    Study,
+    Verse,
+)
 from rag.context_builder import build_context
 from rag.llm_service import generate_biblical_biography_answer, generate_structured_answer
 from rag.models import AskLog
@@ -19,12 +29,327 @@ from rag.verse_ordering import sort_verses_bible_order
 from services.narrative import NarrativeService
 from services.search import unified_search
 
-from .serializers import BookSerializer, ChapterSerializer, StudySerializer, VerseSerializer
+from .serializers import (
+    BookSerializer,
+    ChapterSerializer,
+    CollectiveStudyRequestableSerializer,
+    CollectiveStudySerializer,
+    CollectiveStudyWriteSerializer,
+    LearningGroupSerializer,
+    StudySerializer,
+    VerseSerializer,
+)
 from .throttles import AskThrottle, SearchThrottle
 
 logger = logging.getLogger(__name__)
 
 INTENT_BIBLICAL_BIOGRAPHY = "biblical_biography"
+
+
+def _norm_app_username(value: object) -> str:
+    return (str(value) if value is not None else "").strip().lower()
+
+
+def _hash_password_plain(plain: str) -> str:
+    return hashlib.sha256(plain.encode("utf-8")).hexdigest()
+
+
+def _ensure_api_token(user: AppUserAccount) -> str:
+    if not user.api_token:
+        user.api_token = secrets.token_urlsafe(48)
+        user.save(update_fields=["api_token"])
+    return user.api_token
+
+
+def _user_auth_payload(user: AppUserAccount) -> dict:
+    lg_slug = user.learning_group.slug if user.learning_group_id else None
+    return {
+        "username": user.username,
+        "full_name": user.full_name,
+        "age": user.age,
+        "api_token": _ensure_api_token(user),
+        "learning_group_slug": lg_slug,
+    }
+
+
+def _get_app_user_from_request(request):
+    username = _norm_app_username(
+        request.headers.get("X-App-Username") or request.META.get("HTTP_X_APP_USERNAME", "")
+    )
+    token = (request.headers.get("X-App-Token") or request.META.get("HTTP_X_APP_TOKEN") or "").strip()
+    if not username or not token:
+        return None
+    user = AppUserAccount.objects.select_related("learning_group").filter(username=username).first()
+    if user is None or user.api_token != token:
+        return None
+    return user
+
+
+def _visible_collective_studies_queryset(user: AppUserAccount):
+    return (
+        CollectiveStudy.objects.filter(
+            Q(teacher=user)
+            | Q(audience_group_id=user.learning_group_id)
+            | Q(
+                access_requests__user=user,
+                access_requests__status=CollectiveStudyAccessRequest.Status.ACCEPTED,
+            )
+        )
+        .distinct()
+        .select_related("teacher", "audience_group")
+        .order_by("-lesson_at")
+    )
+
+
+def _requestable_collective_studies_queryset(user: AppUserAccount):
+    if user.learning_group_id is None:
+        return CollectiveStudy.objects.none()
+    blocked = CollectiveStudyAccessRequest.objects.filter(
+        user=user,
+        status__in=[
+            CollectiveStudyAccessRequest.Status.PENDING,
+            CollectiveStudyAccessRequest.Status.ACCEPTED,
+        ],
+    ).values_list("study_id", flat=True)
+    return (
+        CollectiveStudy.objects.filter(allow_external_requests=True)
+        .exclude(audience_group_id=user.learning_group_id)
+        .exclude(teacher=user)
+        .exclude(pk__in=blocked)
+        .select_related("teacher", "audience_group")
+        .order_by("-lesson_at")
+    )
+
+
+def _can_read_collective_study(user: AppUserAccount, study: CollectiveStudy) -> bool:
+    if study.teacher_id == user.id:
+        return True
+    if user.learning_group_id and study.audience_group_id == user.learning_group_id:
+        return True
+    return CollectiveStudyAccessRequest.objects.filter(
+        study=study,
+        user=user,
+        status=CollectiveStudyAccessRequest.Status.ACCEPTED,
+    ).exists()
+
+
+class AppUserRegisterView(APIView):
+    """POST cria conta; repetição com a mesma senha (duplo envio) → 200 idempotente."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        username = _norm_app_username(request.data.get("username"))
+        password = str(request.data.get("password") or "")
+        full_name = str(request.data.get("full_name") or "").strip()
+        age_raw = request.data.get("age")
+        channel = str(request.data.get("channel") or "").strip().lower() or "unknown"
+
+        if not username:
+            return Response({"detail": "Informe um usuário."}, status=status.HTTP_400_BAD_REQUEST)
+        if not full_name:
+            return Response({"detail": "Informe o nome completo."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            age = int(age_raw)
+        except (TypeError, ValueError):
+            return Response({"detail": "Informe uma idade válida."}, status=status.HTTP_400_BAD_REQUEST)
+        if age < 1 or age > 120:
+            return Response({"detail": "Informe uma idade válida."}, status=status.HTTP_400_BAD_REQUEST)
+        if len(password) < 4:
+            return Response(
+                {"detail": "A senha deve ter pelo menos 4 caracteres."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        valid_channels = {"web", "android", "ios", "unknown"}
+        if channel not in valid_channels:
+            channel = "unknown"
+
+        pw_hash = _hash_password_plain(password)
+        existing = AppUserAccount.objects.filter(username=username).first()
+        if existing:
+            if existing.password_hash == pw_hash:
+                return Response(_user_auth_payload(existing))
+            return Response(
+                {"detail": "Este usuário já está cadastrado."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        alunos = LearningGroup.objects.filter(slug="alunos").first()
+        obj = AppUserAccount.objects.create(
+            username=username,
+            full_name=full_name,
+            age=age,
+            password_hash=pw_hash,
+            channel=channel,
+            learning_group=alunos,
+        )
+        _ensure_api_token(obj)
+        body = _user_auth_payload(obj)
+        return Response(body, status=status.HTTP_201_CREATED)
+
+
+class AppUserLoginView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        username = _norm_app_username(request.data.get("username"))
+        password = str(request.data.get("password") or "")
+        if not username or not password:
+            return Response(
+                {"detail": "Preencha usuário e senha."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        pw_hash = _hash_password_plain(password)
+        user = AppUserAccount.objects.filter(username=username).first()
+        if user is None or user.password_hash != pw_hash:
+            return Response(
+                {"detail": "Usuário ou senha incorretos."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(_user_auth_payload(user))
+
+
+class CollectiveStudyViewSet(viewsets.ModelViewSet):
+    """Estudos coletivos (aulas). Autenticação: cabeçalhos X-App-Username + X-App-Token."""
+
+    authentication_classes = []
+    permission_classes = []
+    lookup_field = "pk"
+
+    def get_queryset(self):
+        return CollectiveStudy.objects.none()
+
+    def get_serializer_class(self):
+        if self.action in ("create", "partial_update", "update"):
+            return CollectiveStudyWriteSerializer
+        return CollectiveStudySerializer
+
+    def list(self, request, *args, **kwargs):
+        app_user = _get_app_user_from_request(request)
+        if not app_user:
+            return Response({"readable": [], "requestable": []})
+        readable = _visible_collective_studies_queryset(app_user)
+        requestable = _requestable_collective_studies_queryset(app_user)
+        ctx = {"request": request, "app_user": app_user}
+        return Response(
+            {
+                "readable": CollectiveStudySerializer(readable, many=True, context=ctx).data,
+                "requestable": CollectiveStudyRequestableSerializer(requestable, many=True).data,
+            }
+        )
+
+    def retrieve(self, request, *args, **kwargs):
+        app_user = _get_app_user_from_request(request)
+        if not app_user:
+            return Response({"detail": "Autenticação necessária."}, status=status.HTTP_401_UNAUTHORIZED)
+        pk = kwargs.get("pk")
+        study = (
+            CollectiveStudy.objects.select_related("teacher", "audience_group").filter(pk=pk).first()
+        )
+        if study is None:
+            return Response({"detail": "Não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+        if not _can_read_collective_study(app_user, study):
+            return Response({"detail": "Sem permissão."}, status=status.HTTP_403_FORBIDDEN)
+        ser = CollectiveStudySerializer(
+            study, context={"request": request, "app_user": app_user}
+        )
+        return Response(ser.data)
+
+    def create(self, request, *args, **kwargs):
+        app_user = _get_app_user_from_request(request)
+        if not app_user:
+            return Response({"detail": "Autenticação necessária."}, status=status.HTTP_401_UNAUTHORIZED)
+        if (
+            app_user.learning_group is None
+            or app_user.learning_group.slug != "professores"
+        ):
+            return Response(
+                {"detail": "Apenas utilizadores no grupo Professores podem criar aulas coletivas."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        ser = CollectiveStudyWriteSerializer(data=request.data, context={"teacher": app_user})
+        ser.is_valid(raise_exception=True)
+        study = ser.save()
+        out = CollectiveStudySerializer(
+            study, context={"request": request, "app_user": app_user}
+        )
+        return Response(out.data, status=status.HTTP_201_CREATED)
+
+    def partial_update(self, request, *args, **kwargs):
+        app_user = _get_app_user_from_request(request)
+        if not app_user:
+            return Response({"detail": "Autenticação necessária."}, status=status.HTTP_401_UNAUTHORIZED)
+        study = CollectiveStudy.objects.filter(pk=kwargs.get("pk")).first()
+        if study is None:
+            return Response({"detail": "Não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+        if study.teacher_id != app_user.id:
+            return Response({"detail": "Só o professor autor pode editar."}, status=status.HTTP_403_FORBIDDEN)
+        ser = CollectiveStudyWriteSerializer(study, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        study = ser.save()
+        out = CollectiveStudySerializer(
+            study, context={"request": request, "app_user": app_user}
+        )
+        return Response(out.data)
+
+    def destroy(self, request, *args, **kwargs):
+        app_user = _get_app_user_from_request(request)
+        if not app_user:
+            return Response({"detail": "Autenticação necessária."}, status=status.HTTP_401_UNAUTHORIZED)
+        study = CollectiveStudy.objects.filter(pk=kwargs.get("pk")).first()
+        if study is None:
+            return Response({"detail": "Não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+        if study.teacher_id != app_user.id:
+            return Response({"detail": "Só o professor autor pode eliminar."}, status=status.HTTP_403_FORBIDDEN)
+        study.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["post"], url_path="request-access")
+    def request_access(self, request, pk=None):
+        app_user = _get_app_user_from_request(request)
+        if not app_user:
+            return Response({"detail": "Autenticação necessária."}, status=status.HTTP_401_UNAUTHORIZED)
+        study = CollectiveStudy.objects.filter(pk=pk).first()
+        if study is None:
+            return Response({"detail": "Não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+        if study.teacher_id == app_user.id:
+            return Response({"detail": "É o autor desta aula."}, status=status.HTTP_400_BAD_REQUEST)
+        if (
+            app_user.learning_group_id
+            and study.audience_group_id == app_user.learning_group_id
+        ):
+            return Response({"detail": "Já tem acesso a esta aula."}, status=status.HTTP_400_BAD_REQUEST)
+        if not study.allow_external_requests:
+            return Response(
+                {"detail": "Esta aula não aceita pedidos externos."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        req_obj, created = CollectiveStudyAccessRequest.objects.get_or_create(
+            study=study,
+            user=app_user,
+            defaults={"status": CollectiveStudyAccessRequest.Status.PENDING},
+        )
+        if not created and req_obj.status != CollectiveStudyAccessRequest.Status.REJECTED:
+            return Response(
+                {"detail": "Pedido já registado."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if req_obj.status == CollectiveStudyAccessRequest.Status.REJECTED:
+            req_obj.status = CollectiveStudyAccessRequest.Status.PENDING
+            req_obj.save(update_fields=["status"])
+        return Response({"detail": "Pedido enviado. Aguarde aprovação no administrador."}, status=status.HTTP_200_OK)
+
+
+class LearningGroupListView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        qs = LearningGroup.objects.order_by("name")
+        return Response(LearningGroupSerializer(qs, many=True).data)
 
 
 def _serialize_search(payload: dict) -> dict:

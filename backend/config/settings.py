@@ -143,9 +143,14 @@ CACHES = {
 }
 
 CORS_ALLOW_ALL_ORIGINS = DEBUG
+# Inclua o origin exato do front (ex.: Flutter web na Vercel). Sem isto o browser bloqueia o POST
+# e o app grava só no armazenamento local — o Django Admin fica vazio.
 CORS_ALLOWED_ORIGINS = [
     o.strip()
-    for o in os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:8080").split(",")
+    for o in os.environ.get(
+        "CORS_ALLOWED_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:8080,https://imeb-bibliainteligente.vercel.app",
+    ).split(",")
     if o.strip()
 ]
 

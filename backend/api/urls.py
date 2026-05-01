@@ -5,9 +5,12 @@ from . import views
 
 router = DefaultRouter()
 router.register("books", views.BookViewSet, basename="book")
-router.register("studies", views.StudyViewSet, basename="study")
+router.register("collective-studies", views.CollectiveStudyViewSet, basename="collective-study")
 
 urlpatterns = [
+    path("auth/register", views.AppUserRegisterView.as_view(), name="auth-register"),
+    path("auth/login", views.AppUserLoginView.as_view(), name="auth-login"),
+    path("learning-groups/", views.LearningGroupListView.as_view(), name="learning-groups"),
     path("", include(router.urls)),
     path("ask", views.AskAPIView.as_view(), name="ask"),
     path("search", views.SearchView.as_view(), name="search"),

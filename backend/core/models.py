@@ -151,3 +151,121 @@ class Study(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+
+class AppChannel(models.TextChoices):
+    WEB = "web", "Web (Vercel)"
+    ANDROID = "android", "Android (APK)"
+    IOS = "ios", "iOS"
+    UNKNOWN = "unknown", "Desconhecido"
+
+
+class LearningGroup(models.Model):
+    """Grupo pedagógico (ex.: Alunos, Professores, turmas). Gerido no Django Admin."""
+
+    name = models.CharField(max_length=128)
+    slug = models.SlugField(max_length=64, unique=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class AppUserAccount(models.Model):
+    """Cadastros da app móvel/Web (autenticação própria; não é o utilizador Django admin)."""
+
+    username = models.CharField(max_length=150, unique=True, db_index=True)
+    full_name = models.CharField(max_length=255)
+    age = models.PositiveSmallIntegerField()
+    password_hash = models.CharField(max_length=64)
+    channel = models.CharField(
+        max_length=16,
+        choices=AppChannel.choices,
+        default=AppChannel.UNKNOWN,
+        db_index=True,
+    )
+    learning_group = models.ForeignKey(
+        LearningGroup,
+        on_delete=models.PROTECT,
+        related_name="members",
+        null=True,
+        blank=True,
+    )
+    api_token = models.CharField(max_length=80, blank=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "conta da app"
+        verbose_name_plural = "contas da app"
+
+    def __str__(self) -> str:
+        return self.username
+
+
+class CollectiveStudy(models.Model):
+    """Aula / estudo coletivo criado por um professor (conta app no grupo Professores)."""
+
+    title = models.CharField(max_length=255)
+    content = models.TextField(blank=True)
+    lesson_at = models.DateTimeField(db_index=True)
+    teacher = models.ForeignKey(
+        AppUserAccount,
+        on_delete=models.CASCADE,
+        related_name="collective_studies_authored",
+    )
+    audience_group = models.ForeignKey(
+        LearningGroup,
+        on_delete=models.PROTECT,
+        related_name="collective_studies",
+    )
+    allow_external_requests = models.BooleanField(
+        default=True,
+        help_text="Se verdadeiro, utilizadores fora do grupo audiência podem pedir acesso.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-lesson_at"]
+
+    def __str__(self) -> str:
+        return self.title
+
+
+class CollectiveStudyAccessRequest(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pendente"
+        ACCEPTED = "accepted", "Aceite"
+        REJECTED = "rejected", "Rejeitado"
+
+    study = models.ForeignKey(
+        CollectiveStudy,
+        on_delete=models.CASCADE,
+        related_name="access_requests",
+    )
+    user = models.ForeignKey(
+        AppUserAccount,
+        on_delete=models.CASCADE,
+        related_name="collective_access_requests",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["study", "user"],
+                name="uniq_collective_access_study_user",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user} → {self.study} ({self.status})"

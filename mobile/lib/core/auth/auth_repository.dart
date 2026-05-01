@@ -16,9 +16,22 @@ String _hashPassword(String password) {
 }
 
 class AuthRepository {
-  AuthRepository({ApiService? api}) : _api = api;
+  AuthRepository() : _api = ApiService();
 
-  final ApiService? _api;
+  /// Só para login/registo (sem cabeçalhos X-App); o resto da app usa [apiServiceProvider].
+  final ApiService _api;
+
+  static String? _apiTokenFrom(dynamic data) {
+    if (data == null) return null;
+    final s = data.toString().trim();
+    return s.isEmpty ? null : s;
+  }
+
+  static String? _slugFrom(dynamic data) {
+    if (data == null) return null;
+    final s = data.toString().trim();
+    return s.isEmpty ? null : s;
+  }
 
   Future<Map<String, dynamic>> _loadUsersMap(SharedPreferences p) async {
     final raw = p.getString(_kUsersJson);
@@ -43,6 +56,8 @@ class AuthRepository {
     required String fullName,
     required int age,
     required String passwordHash,
+    String? apiToken,
+    String? learningGroupSlug,
   }) async {
     await _persistUserRecord(
       normalizedUsername: normalizedUsername,
@@ -50,6 +65,8 @@ class AuthRepository {
       age: age,
       passwordHash: passwordHash,
       openSession: true,
+      apiToken: apiToken,
+      learningGroupSlug: learningGroupSlug,
     );
   }
 
@@ -60,14 +77,19 @@ class AuthRepository {
     required int age,
     required String passwordHash,
     required bool openSession,
+    String? apiToken,
+    String? learningGroupSlug,
   }) async {
     final p = await SharedPreferences.getInstance();
     final users = await _loadUsersMap(p);
-    users[normalizedUsername] = {
+    final row = <String, dynamic>{
       'fullName': fullName,
       'age': age,
       'passwordHash': passwordHash,
     };
+    if (apiToken != null) row['apiToken'] = apiToken;
+    if (learningGroupSlug != null) row['learningGroupSlug'] = learningGroupSlug;
+    users[normalizedUsername] = row;
     await _saveUsersMap(p, users);
     if (openSession) {
       await p.setString(_kSessionUser, normalizedUsername);
@@ -84,7 +106,15 @@ class AuthRepository {
     if (entry is! Map<String, dynamic>) return null;
     final full = entry['fullName'] as String? ?? '';
     final age = (entry['age'] as num?)?.toInt() ?? 0;
-    return UserProfile(username: session, fullName: full, age: age);
+    final token = _apiTokenFrom(entry['apiToken']);
+    final slug = _slugFrom(entry['learningGroupSlug']);
+    return UserProfile(
+      username: session,
+      fullName: full,
+      age: age,
+      apiToken: token,
+      learningGroupSlug: slug,
+    );
   }
 
   /// Erro em português ou null se OK.
@@ -106,30 +136,29 @@ class AuthRepository {
 
     final hash = _hashPassword(password);
 
-    final api = _api;
-    if (api != null) {
-      try {
-        final data = await api.registerAppUser(
-          username: username,
-          password: password,
-          fullName: fullName.trim(),
-          age: age,
-          channel: resolveAppChannel(),
-        );
-        final name = data['full_name'] as String? ?? fullName.trim();
-        final ageOut = (data['age'] as num?)?.toInt() ?? age;
-        await _persistUserRecord(
-          normalizedUsername: u,
-          fullName: name,
-          age: ageOut,
-          passwordHash: hash,
-          openSession: openSessionAfterRegister,
-        );
-        return null;
-      } on ApiException catch (e) {
-        if (e.statusCode == 400) {
-          return e.message;
-        }
+    try {
+      final data = await _api.registerAppUser(
+        username: username,
+        password: password,
+        fullName: fullName.trim(),
+        age: age,
+        channel: resolveAppChannel(),
+      );
+      final name = data['full_name'] as String? ?? fullName.trim();
+      final ageOut = (data['age'] as num?)?.toInt() ?? age;
+      await _persistUserRecord(
+        normalizedUsername: u,
+        fullName: name,
+        age: ageOut,
+        passwordHash: hash,
+        openSession: openSessionAfterRegister,
+        apiToken: _apiTokenFrom(data['api_token']),
+        learningGroupSlug: _slugFrom(data['learning_group_slug']),
+      );
+      return null;
+    } on ApiException catch (e) {
+      if (e.statusCode == 400) {
+        return e.message;
       }
     }
 
@@ -165,23 +194,22 @@ class AuthRepository {
 
     final hash = _hashPassword(password);
 
-    final apiLogin = _api;
-    if (apiLogin != null) {
-      try {
-        final data = await apiLogin.loginAppUser(username: username, password: password);
-        final name = data['full_name'] as String? ?? '';
-        final ageOut = (data['age'] as num?)?.toInt() ?? 0;
-        await _persistLocalSession(
-          normalizedUsername: u,
-          fullName: name,
-          age: ageOut,
-          passwordHash: hash,
-        );
-        return null;
-      } on ApiException catch (e) {
-        if (e.statusCode == 400) {
-          return e.message;
-        }
+    try {
+      final data = await _api.loginAppUser(username: username, password: password);
+      final name = data['full_name'] as String? ?? '';
+      final ageOut = (data['age'] as num?)?.toInt() ?? 0;
+      await _persistLocalSession(
+        normalizedUsername: u,
+        fullName: name,
+        age: ageOut,
+        passwordHash: hash,
+        apiToken: _apiTokenFrom(data['api_token']),
+        learningGroupSlug: _slugFrom(data['learning_group_slug']),
+      );
+      return null;
+    } on ApiException catch (e) {
+      if (e.statusCode == 400) {
+        return e.message;
       }
     }
 

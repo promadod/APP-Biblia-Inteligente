@@ -1,6 +1,14 @@
 from rest_framework import serializers
 
-from core.models import Book, Chapter, Entity, Study, Verse
+from core.models import (
+    Book,
+    Chapter,
+    CollectiveStudy,
+    Entity,
+    LearningGroup,
+    Study,
+    Verse,
+)
 
 
 class VerseSerializer(serializers.ModelSerializer):
@@ -41,3 +49,76 @@ class StudySerializer(serializers.ModelSerializer):
         model = Study
         fields = ("id", "title", "content", "source", "created_at", "updated_at", "user")
         read_only_fields = ("id", "created_at", "updated_at")
+
+
+class CollectiveStudySerializer(serializers.ModelSerializer):
+    teacher_name = serializers.CharField(source="teacher.full_name", read_only=True)
+    audience_group_name = serializers.CharField(source="audience_group.name", read_only=True)
+    audience_group_slug = serializers.CharField(source="audience_group.slug", read_only=True)
+    can_edit = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CollectiveStudy
+        fields = (
+            "id",
+            "title",
+            "content",
+            "lesson_at",
+            "teacher",
+            "teacher_name",
+            "audience_group",
+            "audience_group_name",
+            "audience_group_slug",
+            "allow_external_requests",
+            "created_at",
+            "updated_at",
+            "can_edit",
+        )
+        read_only_fields = (
+            "id",
+            "teacher",
+            "created_at",
+            "updated_at",
+            "teacher_name",
+            "audience_group_name",
+            "audience_group_slug",
+            "can_edit",
+        )
+
+    def get_can_edit(self, obj):
+        user = self.context.get("app_user")
+        if user is None:
+            return False
+        return obj.teacher_id == user.id
+
+
+class CollectiveStudyRequestableSerializer(serializers.ModelSerializer):
+    teacher_name = serializers.CharField(source="teacher.full_name", read_only=True)
+    audience_group_name = serializers.CharField(source="audience_group.name", read_only=True)
+
+    class Meta:
+        model = CollectiveStudy
+        fields = (
+            "id",
+            "title",
+            "lesson_at",
+            "teacher_name",
+            "audience_group_name",
+            "allow_external_requests",
+        )
+
+
+class CollectiveStudyWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CollectiveStudy
+        fields = ("title", "content", "lesson_at", "audience_group", "allow_external_requests")
+
+    def create(self, validated_data):
+        validated_data["teacher"] = self.context["teacher"]
+        return super().create(validated_data)
+
+
+class LearningGroupSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LearningGroup
+        fields = ("id", "name", "slug")

@@ -8,6 +8,7 @@ import '../../core/widgets/ai_loading_dialog.dart';
 import '../../core/widgets/animated_button.dart';
 import '../../core/widgets/glass_container.dart';
 import '../../auth/session_provider.dart';
+import '../../providers.dart' show studiesListProvider;
 
 /// Alinhado com [POST /api/ask] quando `intent=biblical_biography`.
 const _kBiblicalBiographyIntent = 'biblical_biography';

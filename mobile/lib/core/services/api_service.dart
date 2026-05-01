@@ -39,12 +39,34 @@ String _httpErrorMessage(http.Response r) {
 
 /// Cliente REST para o backend Django (`/api/`).
 class ApiService {
-  ApiService({http.Client? httpClient, String? baseUrl})
-      : _client = httpClient ?? http.Client(),
-        _baseUrl = baseUrl != null ? normalizeApiBaseUrl(baseUrl) : resolveApiBaseUrl();
+  ApiService({
+    http.Client? httpClient,
+    String? baseUrl,
+    String? appUsername,
+    String? appToken,
+  })  : _client = httpClient ?? http.Client(),
+        _baseUrl = baseUrl != null ? normalizeApiBaseUrl(baseUrl) : resolveApiBaseUrl(),
+        _appUsername = appUsername,
+        _appToken = appToken;
 
   final http.Client _client;
   final String _baseUrl;
+  final String? _appUsername;
+  final String? _appToken;
+
+  Map<String, String> _authHeaders({bool json = false}) {
+    final h = <String, String>{};
+    if (json) {
+      h['Content-Type'] = 'application/json';
+    }
+    final u = _appUsername?.trim().toLowerCase();
+    final t = _appToken?.trim();
+    if (u != null && u.isNotEmpty && t != null && t.isNotEmpty) {
+      h['X-App-Username'] = u;
+      h['X-App-Token'] = t;
+    }
+    return h;
+  }
 
   Uri _uri(String path, [Map<String, String>? query]) {
     final p = path.startsWith('/') ? path.substring(1) : path;
@@ -54,7 +76,7 @@ class ApiService {
 
   Future<Map<String, dynamic>> _getJson(Uri uri, {Duration? timeout}) async {
     try {
-      final r = await _client.get(uri).timeout(timeout ?? const Duration(seconds: 45));
+      final r = await _client.get(uri, headers: _authHeaders()).timeout(timeout ?? const Duration(seconds: 45));
       return _decodeMap(r);
     } on ApiException {
       rethrow;
@@ -108,7 +130,7 @@ class ApiService {
   Future<List<dynamic>> books({String? version}) async {
     final uri = _uri('api/books/', version != null ? {'version': version} : null);
     try {
-      final r = await _client.get(uri).timeout(const Duration(seconds: 45));
+      final r = await _client.get(uri, headers: _authHeaders()).timeout(const Duration(seconds: 45));
       if (r.statusCode < 200 || r.statusCode >= 300) {
         throw ApiException(_httpErrorMessage(r), statusCode: r.statusCode);
       }
@@ -127,7 +149,7 @@ class ApiService {
   Future<List<dynamic>> chapters(int bookId) async {
     final uri = _uri('api/books/$bookId/chapters/');
     try {
-      final r = await _client.get(uri).timeout(const Duration(seconds: 45));
+      final r = await _client.get(uri, headers: _authHeaders()).timeout(const Duration(seconds: 45));
       return _decodeList(r);
     } catch (e) {
       if (e is ApiException) rethrow;
@@ -138,7 +160,7 @@ class ApiService {
   Future<List<dynamic>> verses(int chapterId) async {
     final uri = _uri('api/chapters/$chapterId/verses');
     try {
-      final r = await _client.get(uri).timeout(const Duration(seconds: 45));
+      final r = await _client.get(uri, headers: _authHeaders()).timeout(const Duration(seconds: 45));
       return _decodeList(r);
     } catch (e) {
       if (e is ApiException) rethrow;
@@ -149,7 +171,7 @@ class ApiService {
   Future<List<dynamic>> studies() async {
     final uri = _uri('api/studies/');
     try {
-      final r = await _client.get(uri).timeout(const Duration(seconds: 45));
+      final r = await _client.get(uri, headers: _authHeaders()).timeout(const Duration(seconds: 45));
       final map = _decodeMap(r);
       final results = map['results'];
       if (results is List) return results;
@@ -171,7 +193,7 @@ class ApiService {
       final r = await _client
           .post(
             uri,
-            headers: {'Content-Type': 'application/json'},
+            headers: {..._authHeaders(json: true)},
             body: jsonEncode({
               'title': title,
               'content': content,
@@ -189,7 +211,7 @@ class ApiService {
 
   Future<void> deleteStudy(int id) async {
     final uri = _uri('api/studies/$id/');
-    final r = await _client.delete(uri).timeout(const Duration(seconds: 45));
+    final r = await _client.delete(uri, headers: _authHeaders()).timeout(const Duration(seconds: 45));
     if (r.statusCode < 200 || r.statusCode >= 300) {
       throw ApiException(_httpErrorMessage(r), statusCode: r.statusCode);
     }
@@ -201,7 +223,7 @@ class ApiService {
       final r = await _client
           .patch(
             uri,
-            headers: {'Content-Type': 'application/json'},
+            headers: {..._authHeaders(json: true)},
             body: jsonEncode({'title': title, 'content': content}),
           )
           .timeout(const Duration(seconds: 45));
@@ -306,7 +328,7 @@ class ApiService {
       final r = await _client
           .post(
             uri,
-            headers: {'Content-Type': 'application/json'},
+            headers: {..._authHeaders(json: true)},
             body: jsonEncode(body),
           )
           .timeout(const Duration(seconds: 120));
@@ -314,6 +336,97 @@ class ApiService {
     } on ApiException {
       rethrow;
     } catch (e) {
+      throw ApiException(ApiException.userMessage(e), cause: e);
+    }
+  }
+
+  /// `{ readable: [...], requestable: [...] }`
+  Future<Map<String, dynamic>> collectiveStudiesOverview() async {
+    final uri = _uri('api/collective-studies/');
+    return _getJson(uri);
+  }
+
+  Future<Map<String, dynamic>> collectiveStudyDetail(int id) async {
+    final uri = _uri('api/collective-studies/$id/');
+    return _getJson(uri);
+  }
+
+  Future<Map<String, dynamic>> createCollectiveStudy(Map<String, dynamic> body) async {
+    final uri = _uri('api/collective-studies/');
+    try {
+      final r = await _client
+          .post(
+            uri,
+            headers: {..._authHeaders(json: true)},
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 45));
+      return _decodeMap(r);
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException(ApiException.userMessage(e), cause: e);
+    }
+  }
+
+  Future<Map<String, dynamic>> updateCollectiveStudy(int id, Map<String, dynamic> body) async {
+    final uri = _uri('api/collective-studies/$id/');
+    try {
+      final r = await _client
+          .patch(
+            uri,
+            headers: {..._authHeaders(json: true)},
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 45));
+      return _decodeMap(r);
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException(ApiException.userMessage(e), cause: e);
+    }
+  }
+
+  Future<void> deleteCollectiveStudy(int id) async {
+    final uri = _uri('api/collective-studies/$id/');
+    final r = await _client.delete(uri, headers: _authHeaders()).timeout(const Duration(seconds: 45));
+    if (r.statusCode < 200 || r.statusCode >= 300) {
+      throw ApiException(_httpErrorMessage(r), statusCode: r.statusCode);
+    }
+  }
+
+  Future<Map<String, dynamic>> requestCollectiveStudyAccess(int id) async {
+    final uri = _uri('api/collective-studies/$id/request-access/');
+    try {
+      final r = await _client
+          .post(
+            uri,
+            headers: {..._authHeaders(json: true)},
+            body: '{}',
+          )
+          .timeout(const Duration(seconds: 45));
+      if (r.statusCode >= 200 && r.statusCode < 300) {
+        final raw = r.body.isEmpty ? '{}' : r.body;
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) return decoded;
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+        return {};
+      }
+      throw ApiException(_httpErrorMessage(r), statusCode: r.statusCode);
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException(ApiException.userMessage(e), cause: e);
+    }
+  }
+
+  Future<List<dynamic>> learningGroups() async {
+    final uri = _uri('api/learning-groups/');
+    try {
+      final r = await _client.get(uri, headers: _authHeaders()).timeout(const Duration(seconds: 45));
+      return _decodeList(r);
+    } catch (e) {
+      if (e is ApiException) rethrow;
       throw ApiException(ApiException.userMessage(e), cause: e);
     }
   }
