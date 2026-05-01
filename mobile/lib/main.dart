@@ -5,6 +5,7 @@ import 'auth/session_provider.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/login_screen.dart';
+import 'features/bible_summary/bible_summary_screen.dart';
 import 'features/chat/chat_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/reading/reading_screen.dart';
@@ -64,6 +65,7 @@ class _MainShellState extends State<MainShell> {
     HomeScreen(),
     SearchScreen(),
     ReadingScreen(),
+    BibleSummaryScreen(),
     ChatScreen(),
     StudiesScreen(),
   ];
@@ -90,6 +92,11 @@ class _MainShellState extends State<MainShell> {
             icon: Icon(Icons.menu_book_outlined),
             selectedIcon: Icon(Icons.menu_book_rounded),
             label: 'Leitura',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.library_books_outlined),
+            selectedIcon: Icon(Icons.library_books_rounded),
+            label: 'Resumos',
           ),
           NavigationDestination(
             icon: Icon(Icons.chat_outlined),

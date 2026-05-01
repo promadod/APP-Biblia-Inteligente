@@ -4,9 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/services/api_exception.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/ai_loading_dialog.dart';
 import '../../core/widgets/animated_button.dart';
 import '../../core/widgets/glass_container.dart';
-import '../../providers.dart';
+import '../../auth/session_provider.dart';
 
 /// Alinhado com [POST /api/ask] quando `intent=biblical_biography`.
 const _kBiblicalBiographyIntent = 'biblical_biography';
@@ -216,6 +217,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _controller.clear();
     _scrollEnd();
 
+    var loadingDialogShown = false;
+    if (context.mounted) {
+      loadingDialogShown = true;
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const AiLoadingDialog(),
+      );
+    }
+
     try {
       final data = await ref.read(apiServiceProvider).ask(
             q,
@@ -268,6 +279,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _msgs.add(_Bubble(role: 'assistant', text: ApiException.userMessage(e)));
       });
     } finally {
+      if (loadingDialogShown && mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
       setState(() => _busy = false);
       _scrollEnd();
     }
@@ -291,21 +305,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
-                      childCount: _msgs.length + (_busy ? 1 : 0),
+                      childCount: _msgs.length,
                       (ctx, i) {
-                        if (_busy && i == _msgs.length) {
-                          return const Padding(
-                            padding: EdgeInsets.all(16),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: SizedBox(
-                                width: 28,
-                                height: 28,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
-                              ),
-                            ),
-                          );
-                        }
                         final m = _msgs[i];
                         final isUser = m.role == 'user';
                         return Align(

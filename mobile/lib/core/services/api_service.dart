@@ -214,6 +214,81 @@ class ApiService {
   }
 
   /// [intent] `biblical_biography` — resposta JSON da feature Perguntas (lifeSummary, chronology, text, sources[]).
+  /// Registo de conta da app (`POST /api/auth/register`). Resposta 200 ou 201.
+  Future<Map<String, dynamic>> registerAppUser({
+    required String username,
+    required String password,
+    required String fullName,
+    required int age,
+    String channel = 'unknown',
+  }) async {
+    final uri = _uri('api/auth/register');
+    try {
+      final r = await _client
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'username': username,
+              'password': password,
+              'full_name': fullName,
+              'age': age,
+              'channel': channel,
+            }),
+          )
+          .timeout(const Duration(seconds: 45));
+      if (r.statusCode >= 200 && r.statusCode < 300) {
+        final raw = r.body.isEmpty ? '{}' : r.body;
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) return decoded;
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+        throw ApiException('Resposta inválida do servidor');
+      }
+      throw ApiException(
+        _httpErrorMessage(r),
+        statusCode: r.statusCode,
+      );
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException(ApiException.userMessage(e), cause: e);
+    }
+  }
+
+  Future<Map<String, dynamic>> loginAppUser({
+    required String username,
+    required String password,
+  }) async {
+    final uri = _uri('api/auth/login');
+    try {
+      final r = await _client
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'username': username,
+              'password': password,
+            }),
+          )
+          .timeout(const Duration(seconds: 45));
+      if (r.statusCode >= 200 && r.statusCode < 300) {
+        final raw = r.body.isEmpty ? '{}' : r.body;
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) return decoded;
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+        throw ApiException('Resposta inválida do servidor');
+      }
+      throw ApiException(
+        _httpErrorMessage(r),
+        statusCode: r.statusCode,
+      );
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException(ApiException.userMessage(e), cause: e);
+    }
+  }
+
   Future<Map<String, dynamic>> ask(
     String question, {
     String? version,

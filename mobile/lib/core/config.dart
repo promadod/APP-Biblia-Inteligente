@@ -1,5 +1,3 @@
-import 'dart:io' show Platform;
-
 /// Porta do `runserver` Django (alinhar com `python manage.py runserver 8000`).
 const int kApiDevPort = 8000;
 
@@ -36,8 +34,10 @@ String resolveApiBaseUrl() {
   if (trimmed.isNotEmpty) {
     return normalizeApiBaseUrl(trimmed);
   }
-  if (Platform.isAndroid) {
-    return 'http://10.0.2.2:$kApiDevPort';
-  }
-  return 'http://127.0.0.1:$kApiDevPort';
+  
+  // ==========================================
+  // CONFIGURAÇÃO DE PRODUÇÃO NO PYTHONANYWHERE
+  // ==========================================
+  // Retorna a URL do seu servidor real (lembre-se: SEM a barra / no final e SEM o /api)
+  return 'https://bibliaoneira.pythonanywhere.com';
 }

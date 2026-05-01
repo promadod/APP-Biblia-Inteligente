@@ -52,6 +52,32 @@ class _FakeApiService extends ApiService {
         'sources': [],
         'backend': 'stub',
       };
+
+  @override
+  Future<Map<String, dynamic>> registerAppUser({
+    required String username,
+    required String password,
+    required String fullName,
+    required int age,
+    String channel = 'unknown',
+  }) async =>
+      {
+        'username': username.trim().toLowerCase(),
+        'full_name': fullName,
+        'age': age,
+      };
+
+  @override
+  Future<Map<String, dynamic>> loginAppUser({
+    required String username,
+    required String password,
+  }) async =>
+      registerAppUser(
+        username: username,
+        password: password,
+        fullName: 'Test',
+        age: 30,
+      );
 }
 
 void main() {

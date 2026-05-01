@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../app_channel.dart';
+import '../services/api_exception.dart';
+import '../services/api_service.dart';
 import 'user_profile.dart';
 
 const _kUsersJson = 'auth_users_v1';
@@ -13,6 +16,10 @@ String _hashPassword(String password) {
 }
 
 class AuthRepository {
+  AuthRepository({ApiService? api}) : _api = api;
+
+  final ApiService? _api;
+
   Future<Map<String, dynamic>> _loadUsersMap(SharedPreferences p) async {
     final raw = p.getString(_kUsersJson);
     if (raw == null || raw.isEmpty) return {};
@@ -31,6 +38,42 @@ class AuthRepository {
 
   String _normUser(String u) => u.trim().toLowerCase();
 
+  Future<void> _persistLocalSession({
+    required String normalizedUsername,
+    required String fullName,
+    required int age,
+    required String passwordHash,
+  }) async {
+    await _persistUserRecord(
+      normalizedUsername: normalizedUsername,
+      fullName: fullName,
+      age: age,
+      passwordHash: passwordHash,
+      openSession: true,
+    );
+  }
+
+  /// Grava utilizador localmente; [openSession] false = só credenciais (ex.: web após cadastro).
+  Future<void> _persistUserRecord({
+    required String normalizedUsername,
+    required String fullName,
+    required int age,
+    required String passwordHash,
+    required bool openSession,
+  }) async {
+    final p = await SharedPreferences.getInstance();
+    final users = await _loadUsersMap(p);
+    users[normalizedUsername] = {
+      'fullName': fullName,
+      'age': age,
+      'passwordHash': passwordHash,
+    };
+    await _saveUsersMap(p, users);
+    if (openSession) {
+      await p.setString(_kSessionUser, normalizedUsername);
+    }
+  }
+
   /// Sessão actual ou null.
   Future<UserProfile?> currentUser() async {
     final p = await SharedPreferences.getInstance();
@@ -45,11 +88,15 @@ class AuthRepository {
   }
 
   /// Erro em português ou null se OK.
+  ///
+  /// [openSessionAfterRegister] em `false` (ex.: web) só grava credenciais; o utilizador deve
+  /// fazer login em seguida.
   Future<String?> register({
     required String fullName,
     required int age,
     required String username,
     required String password,
+    bool openSessionAfterRegister = true,
   }) async {
     final u = _normUser(username);
     if (u.isEmpty) return 'Informe um usuário.';
@@ -57,17 +104,58 @@ class AuthRepository {
     if (age < 1 || age > 120) return 'Informe uma idade válida.';
     if (password.length < 4) return 'A senha deve ter pelo menos 4 caracteres.';
 
+    final hash = _hashPassword(password);
+
+    final api = _api;
+    if (api != null) {
+      try {
+        final data = await api.registerAppUser(
+          username: username,
+          password: password,
+          fullName: fullName.trim(),
+          age: age,
+          channel: resolveAppChannel(),
+        );
+        final name = data['full_name'] as String? ?? fullName.trim();
+        final ageOut = (data['age'] as num?)?.toInt() ?? age;
+        await _persistUserRecord(
+          normalizedUsername: u,
+          fullName: name,
+          age: ageOut,
+          passwordHash: hash,
+          openSession: openSessionAfterRegister,
+        );
+        return null;
+      } on ApiException catch (e) {
+        if (e.statusCode == 400) {
+          return e.message;
+        }
+      }
+    }
+
     final p = await SharedPreferences.getInstance();
     final users = await _loadUsersMap(p);
-    if (users.containsKey(u)) return 'Este usuário já está cadastrado.';
+    if (users.containsKey(u)) {
+      final entry = users[u];
+      if (entry is Map<String, dynamic>) {
+        final stored = entry['passwordHash'] as String?;
+        if (stored == hash) {
+          if (openSessionAfterRegister) {
+            await p.setString(_kSessionUser, u);
+          }
+          return null;
+        }
+      }
+      return 'Este usuário já está cadastrado.';
+    }
 
-    users[u] = {
-      'fullName': fullName.trim(),
-      'age': age,
-      'passwordHash': _hashPassword(password),
-    };
-    await _saveUsersMap(p, users);
-    await p.setString(_kSessionUser, u);
+    await _persistUserRecord(
+      normalizedUsername: u,
+      fullName: fullName.trim(),
+      age: age,
+      passwordHash: hash,
+      openSession: openSessionAfterRegister,
+    );
     return null;
   }
 
@@ -75,12 +163,34 @@ class AuthRepository {
     final u = _normUser(username);
     if (u.isEmpty || password.isEmpty) return 'Preencha usuário e senha.';
 
+    final hash = _hashPassword(password);
+
+    final apiLogin = _api;
+    if (apiLogin != null) {
+      try {
+        final data = await apiLogin.loginAppUser(username: username, password: password);
+        final name = data['full_name'] as String? ?? '';
+        final ageOut = (data['age'] as num?)?.toInt() ?? 0;
+        await _persistLocalSession(
+          normalizedUsername: u,
+          fullName: name,
+          age: ageOut,
+          passwordHash: hash,
+        );
+        return null;
+      } on ApiException catch (e) {
+        if (e.statusCode == 400) {
+          return e.message;
+        }
+      }
+    }
+
     final p = await SharedPreferences.getInstance();
     final users = await _loadUsersMap(p);
     final entry = users[u];
     if (entry is! Map<String, dynamic>) return 'Usuário ou senha incorretos.';
     final stored = entry['passwordHash'] as String?;
-    if (stored != _hashPassword(password)) return 'Usuário ou senha incorretos.';
+    if (stored != hash) return 'Usuário ou senha incorretos.';
 
     await p.setString(_kSessionUser, u);
     return null;

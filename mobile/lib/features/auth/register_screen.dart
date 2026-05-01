@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -48,6 +49,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           age: ageRaw ?? 0,
           username: _userCtrl.text,
           password: _passCtrl.text,
+          openSessionAfterRegister: !kIsWeb,
         );
     if (!mounted) return;
     setState(() => _busy = false);
@@ -55,6 +57,33 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
       return;
     }
+    if (!mounted) return;
+
+    if (kIsWeb) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Cadastro concluído'),
+          content: const Text(
+            'Usuário cadastrado com sucesso. Volte e faça login com o usuário e a senha que criou.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Usuário cadastrado com sucesso!')),
+    );
     ref.invalidate(sessionFutureProvider);
     await ref.read(sessionFutureProvider.future);
   }

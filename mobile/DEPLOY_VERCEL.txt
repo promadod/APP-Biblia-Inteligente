@@ -1,0 +1,50 @@
+Deploy Flutter Web na Vercel (APP-Biblia-Inteligente-MOBILE)
+============================================================
+
+Pré-requisito: este repositório contém só a pasta mobile (Flutter).
+
+1) GitHub
+   - Repositório já criado: https://github.com/promadod/APP-Biblia-Inteligente-MOBILE-
+
+2) Conta Vercel (vercel.com) → Sign in com GitHub.
+
+3) Add New Project → Import o repositório "APP-Biblia-Inteligente-MOBILE-".
+
+4) Configuração do projeto (Project Settings durante o import ou depois em Settings):
+   - Framework Preset: Other (ou detecta vazio; o vercel.json define o build).
+   - Root Directory: deixar em branco se o repo só tem o Flutter na raiz (package.json não existe — é normal).
+   - Build Command: (herdado do vercel.json; não precisa duplicar na UI se aparecer vazio).
+   - Output Directory: build/web (herdado do vercel.json).
+
+5) Variáveis de ambiente (Settings → Environment Variables), opcional:
+   - Se no futuro usar --dart-define na build:
+     API_BASE_URL = https://bibliaoneira.pythonanywhere.com
+   - O código atual em lib/core/config.dart já tem fallback para esse host; define só se quiseres mudar URL sem rebuild manual.
+
+6) Deploy
+   - Deploy. O primeiro build pode demorar (clone do Flutter SDK na máquina de build da Vercel).
+
+7) CORS no Django (PythonAnywhere)
+   - Em CSRF_TRUSTED_ORIGINS / CORS_ALLOWED_ORIGINS inclui o domínio que a Vercel mostrar, por exemplo:
+     https://teu-projeto.vercel.app
+   - Sem isto, o browser pode bloquear chamadas à API a partir do site na Vercel.
+
+8) HTTPS
+   - A Vercel serve HTTPS por defeito; a API PA também deve estar em https://...
+
+Notas
+-----
+- O ficheiro vercel.json na raiz do projeto Flutter define buildCommand e outputDirectory.
+- Se o build falhar por tempo limite, aumenta o timeout no plano Vercel ou migra para build em CI (GitHub Actions) que faz flutter build web e envia só build/web para Vercel via artefacto.
+
+Monorepo vs repositório mobile (evitar UI desatualizada)
+--------------------------------------------------------
+- O repositório **APP-Biblia-Inteligente** (monorepo) contém a pasta `mobile/`. O repositório
+  **APP-Biblia-Inteligente-MOBILE-** contém o mesmo código Flutter na raiz (sem subpasta `mobile`).
+- Se a Vercel estiver ligada ao **monorepo** com **Root Directory = `mobile`**, o deploy usa o
+  `main.dart` desse monorepo. Se só actualizaste o repositório **MOBILE-**, a Vercel continua a
+  compilar a versão antiga até fazeres `git pull` do monorepo com `mobile/` alinhado ou mudares o
+  import do projecto Vercel para o repositório **APP-Biblia-Inteligente-MOBILE-** (Root vazio).
+- Após um deploy novo, se ainda vires a UI antiga: janela anónima, ou no Chrome → Application →
+  Unregister service worker, ou Ctrl+F5. O vercel.json define headers para `index.html` e service
+  worker com cache mínimo.
