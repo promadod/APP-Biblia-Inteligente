@@ -16,7 +16,9 @@ Deploy Django no PythonAnywhere (resumo)
    DEBUG=0
    ALLOWED_HOSTS=seudominio.pythonanywhere.com
    CSRF_TRUSTED_ORIGINS=https://seudominio.pythonanywhere.com
-   CORS_ALLOWED_ORIGINS=https://seudominio.pythonanywhere.com
+   CORS_ALLOWED_ORIGINS=https://seudominio.pythonanywhere.com,https://imeb-bibliainteligente.vercel.app
+   (origins separados por vírgula, sem espaços; inclua o site Flutter web na Vercel ou o POST /api/auth/register
+   fica bloqueado pelo browser e o cadastro só fica no armazenamento local — o admin fica vazio.)
    OPENAI_API_KEY=...   (se usar RAG/LLM)
 
    Para SQLite (simples): não defina DB_NAME (o projeto usa sqlite em backend/db.sqlite3).
@@ -35,3 +37,47 @@ Deploy Django no PythonAnywhere (resumo)
 
 App Flutter: compile com --dart-define=API_BASE_URL=https://seudominio.pythonanywhere.com
 (opção: alterar resolveApiBaseUrl / baseUrl no cliente).
+
+---
+
+Opcao B — sparse-checkout (só backend, sem pasta mobile no disco)
+================================================================
+
+No servidor PythonAnywhere o Django só precisa de `backend/`. Com sparse-checkout,
+`git pull` não materializa `mobile/` (menos disco e pull mais rápido). O Flutter
+continua na Vercel/repo mobile à parte.
+
+A) Clone novo (recomendado na primeira vez ou se quiser substituir clone completo):
+
+   cd ~
+   git clone --filter=blob:none --sparse https://github.com/promadod/APP-Biblia-Inteligente.git APP-Biblia-Inteligente
+   cd APP-Biblia-Inteligente
+   git sparse-checkout init --cone
+   git sparse-checkout set backend
+
+   Depois: virtualenv, cd backend, pip install -r requirements.txt, migrate,
+   collectstatic, WSGI, Reload (secções 2–7 acima).
+
+B) Já tens o repositório clonado (converter para sparse):
+
+   cd ~/APP-Biblia-Inteligente
+   git fetch origin
+   git sparse-checkout init --cone
+   git sparse-checkout set backend
+   git pull origin main
+
+   Se o Git avisar de ficheiros em `mobile/` "left despite sparse patterns",
+   essa pasta costumava existir no disco: podes apagar a pasta `mobile/` no
+   servidor (só se não precisares dela no PA) e voltar a correr
+   `git sparse-checkout reapply`, ou fazer backup e `rm -rf mobile` antes do
+   reapply.
+
+Atualizar o backend no PythonAnywhere (após sparse configurado):
+
+   workon bible-env
+   cd ~/APP-Biblia-Inteligente/backend
+   git pull origin main
+   pip install -r requirements.txt
+   python manage.py migrate
+   python manage.py collectstatic --noinput
+   # Reload da web app no painel PythonAnywhere (ou touch no ficheiro WSGI)
