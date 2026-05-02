@@ -81,3 +81,21 @@ Atualizar o backend no PythonAnywhere (após sparse configurado):
    python manage.py migrate
    python manage.py collectstatic --noinput
    # Reload da web app no painel PythonAnywhere (ou touch no ficheiro WSGI)
+
+Verificação — Estudos coletivos (evitar 404 no Flutter "Estudo compartilhado")
+================================================================================
+
+A app chama GET/POST ` /api/collective-studies/ ` (ver `api/urls.py` com
+`router.register("collective-studies", ...)`). Se o servidor ainda tiver um
+`api/urls.py` antigo (só `learning-groups/`, sem o router), o browser mostra
+"Servidor respondeu 404" ao abrir a aba ou ao guardar "Nova aula".
+
+1) Após `git pull` e reload, o endpoint deve devolver JSON, não HTML 404:
+   curl -sS -o /dev/null -w "%{http_code}\n" https://SEU_SUBDOMINIO.pythonanywhere.com/api/collective-studies/
+   Espere 200 (GET com cabeçalhos vazios devolve `{"readable":[],"requestable":[]}`).
+
+2) No clone, confirme que a linha existe:
+   grep collective-studies api/urls.py
+
+3) As migrações `0005` e `0006` (contas app + estudos colectivos) têm de estar
+   aplicadas: `python manage.py migrate` (sem erros).
